@@ -52,7 +52,7 @@ from omni.isaac.core.utils.stage import get_current_stage
 from omni.isaac.core.utils.types import ArticulationAction
 from omni.isaac.sensor import Camera
 from pxr import Gf, UsdGeom
-from tf2_ros import StaticTransformBroadcaster
+from tf2_ros import StaticTransformBroadcaster, TransformBroadcaster
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SECTION 0.5 — JACKAL DIFFERENTIAL DRIVE CONTROLLER
@@ -203,7 +203,7 @@ print("[DR.Nav] Camera render products created")
 #   ROS2CameraHelper        inputs:topicName
 #   ROS2CameraHelper        inputs:type
 #   ROS2CameraHelper        inputs:execIn
-#   IsaacComputeOdometry    inputs:chassisPrimPath     set to ROBOT_PRIM
+#   IsaacComputeOdometry    inputs:execIn only         NO chassisPrimPath in 4.5
 #   IsaacReadSimulationTime  NO execIn                 pure data node
 #
 # NOTE: ROS2PublishTransformTree is intentionally NOT used here.
@@ -264,10 +264,10 @@ og.Controller.edit(
             ("lidar.inputs:fullScan",          True),
 
             # Odometry
-            # chassisPrimPath = articulation root (not a child link)
-            # chassisFrameId  = ROS TF label — stays "base_link" regardless of
-            #                   the USD body prim name (BODY_LINK constant above)
-            ("odomcompute.inputs:chassisPrimPath", ROBOT_PRIM),
+            # NOTE: IsaacComputeOdometry has NO chassisPrimPath in Isaac Sim 4.5
+            # — the node auto-detects the articulation root in the scene.
+            # chassisFrameId = ROS TF label; stays "base_link" regardless of
+            # the USD body prim name (BODY_LINK constant above).
             ("odompub.inputs:topicName",           TOPIC_ODOM),
             ("odompub.inputs:chassisFrameId",      "base_link"),
             ("odompub.inputs:odomFrameId",         "odom"),
@@ -349,6 +349,11 @@ _jackal        = Articulation(prim_path=ROBOT_PRIM)
 _controller    = JackalController()
 _jackal_ready  = [False]
 
+# Dynamic TF broadcaster: publishes odom → base_link every frame.
+# ROS2PublishOdometry only publishes nav_msgs/Odometry — it does NOT
+# auto-publish TF in Isaac Sim 4.5, so we do it here instead.
+_tf_broadcaster = TransformBroadcaster(_ros_node)
+
 try:
     _jackal_sub.unsubscribe()   # noqa: F821 — clean up on re-run
 except (NameError, Exception):
@@ -367,6 +372,24 @@ def _jackal_step(dt):
             return   # physics not ready yet — retry next frame
         return
 
+    # ── Publish odom → base_link TF ──────────────────────────────────────
+    # get_world_pose() returns (position [x,y,z], orientation [w,x,y,z])
+    pos, ori = _jackal.get_world_pose()
+    t = TransformStamped()
+    t.header.stamp       = _ros_node.get_clock().now().to_msg()
+    t.header.frame_id    = "odom"
+    t.child_frame_id     = "base_link"
+    t.transform.translation.x = float(pos[0])
+    t.transform.translation.y = float(pos[1])
+    t.transform.translation.z = float(pos[2])
+    # Isaac Sim quaternion convention: [w, x, y, z]
+    t.transform.rotation.w = float(ori[0])
+    t.transform.rotation.x = float(ori[1])
+    t.transform.rotation.y = float(ori[2])
+    t.transform.rotation.z = float(ori[3])
+    _tf_broadcaster.sendTransform(t)
+
+    # ── Drive robot from /cmd_vel ─────────────────────────────────────────
     lin = _latest_twist.linear.x
     ang = _latest_twist.angular.z
     _jackal.apply_action(_controller.forward(command=[lin, ang]))
