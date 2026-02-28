@@ -264,19 +264,26 @@ print(f"[DR.Nav] OmniGraph built: {GRAPH}")
 # ═══════════════════════════════════════════════════════════════════════════════
 # SECTION 7 — DIFFERENTIAL CONTROLLER
 # ═══════════════════════════════════════════════════════════════════════════════
-# Module-level setup — no class needed in Script Editor context.
+# World.instance() is None when no World was created via the Python API (i.e.
+# the robot was loaded by opening a USD file, not programmatically).
+# Create it if missing, then wrap the stage prim directly as an Articulation —
+# this works regardless of whether the robot was added via world.scene.add().
+from omni.isaac.core.articulations import Articulation
+
 _world = World.instance()
-if _world is not None:
-    _jackal = _world.scene.get_object("jackal_robot")
-    _my_controller = Jackal_controller()
+if _world is None:
+    _world = World()
+    print("[DR.Nav] Created new World instance")
 
-    def _send_robot_actions(step_size):
-        _jackal.apply_action(_my_controller.forward(command=[0.20, np.pi / 4]))
+_jackal = Articulation(prim_path=ROBOT_PRIM)
+_jackal.initialize()
+_my_controller = Jackal_controller()
 
-    _world.add_physics_callback("sending_actions", callback_fn=_send_robot_actions)
-    print("[DR.Nav] Physics callback registered")
-else:
-    print("[DR.Nav] WARNING: World not initialized — skipping controller setup")
+def _send_robot_actions(step_size):
+    _jackal.apply_action(_my_controller.forward(command=[0.20, np.pi / 4]))
+
+_world.add_physics_callback("sending_actions", callback_fn=_send_robot_actions)
+print("[DR.Nav] Physics callback registered")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SECTION 8 — START SIMULATION
