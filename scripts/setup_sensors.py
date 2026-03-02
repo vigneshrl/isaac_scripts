@@ -163,8 +163,8 @@ _, sensor = omni.kit.commands.execute(
     "IsaacSensorCreateRtxLidar",
     path=LIDAR_PATH,
     parent=None,
-    config="Velodyne_VLS128",
-    translation=(0.3, 0.0, 0.1),
+    config= "OS1_REV6_128ch20hz512res",#"Velodyne_VLS128",
+    translation=(0.0, 0.0, 0.45),
     orientation=Gf.Quatd(1, 0, 0, 0),
 )
 
@@ -328,7 +328,7 @@ def _make_static_tf(parent, child, x, y, z, qx=0.0, qy=0.0, qz=0.0, qw=1.0):
 _static_br = StaticTransformBroadcaster(_ros_node)
 _static_br.sendTransform([
     # lidar: 0.3 m forward, 0.1 m up, no rotation
-    _make_static_tf("base_link", "sim_lidar",           0.30,  0.00, 0.10),
+    _make_static_tf("base_link", "sim_lidar",           0.00,  0.00, 0.45),
     # front cam: slight left offset, facing forward (no rotation)
     _make_static_tf("base_link", "cam_front",       0.40,  0.15, 0.30),
     # side-left cam: 90° yaw → qz=sin(45°)=0.7071, qw=cos(45°)=0.7071
